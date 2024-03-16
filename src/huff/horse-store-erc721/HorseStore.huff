@@ -1,0 +1,360 @@
+/**********************************************************************
+* HUFF implementation of ./HorseStore.sol                             *
+***********************************************************************/
+
+/**********************************************************************
+* Function Interfaces                                                 *
+***********************************************************************/
+// HorseStore functions
+#define function HORSE_HAPPY_IF_FED_WITHIN() nonpayable returns (uint256)
+#define function mintHorse() nonpayable returns ()
+#define function horseIdToFedTimeStamp(uint256) nonpayable returns (uint256)
+#define function feedHorse(uint256) nonpayable returns ()
+#define function isHappyHorse(uint256) nonpayable returns (bool)
+
+// ERC721
+#define function balanceOf(address) view returns (uint256)
+#define function ownerOf(uint256) view returns (address)
+#define function name() nonpayable returns (string)
+#define function symbol() nonpayable returns (string)
+#define function totalSupply() nonpayable returns (uint256)
+
+// @TODO: IERC721Enumerable
+// #define function tokenByIndex(uint256 index) nonpayable view returns (uint256)
+// #define function tokenOfOwnerByIndex(address owner, uint256 index) nonpayable view returns (uint256)
+
+// @TODO: IERC721
+// #define function safeTransferFrom(address,address, uint256, bytes) nonpayable returns ()
+// #define function safeTransferFrom(address,address, uint256) nonpayable returns ()
+// #define function transferFrom(address,address, uint256) nonpayable returns ()
+// #define function approve(address,uint256) nonpayable returns ()
+// #define function setApprovalForAll(address,bool) nonpayable returns ()
+// #define function getApproved(uint256) nonpayable returns (address)
+// #define function isApprovedForAll(address,address) nonpayable returns (bool)
+
+/**********************************************************************
+* Errors                                                              *
+***********************************************************************/
+#define error ForbiddenError()
+#define error NonPayableError()
+
+/**********************************************************************
+* Events                                                              *
+***********************************************************************/
+#define event Transfer(address,address,uint256)
+
+/**********************************************************************
+* Constants                                                           *
+***********************************************************************/
+#define constant HORSE_HAPPY_IF_FED_WITHIN_SECONDS = 0x15180 // 1 day
+#define constant NAME_OFFSET =          0x0000000000000000000000000000000000000000000000000000000000000080
+#define constant NAME_LENGTH_OFFSET =   0x00000000000000000000000000000000000000000000000000000000000000a0
+#define constant SYMBOL_OFFSET =        0x0000000000000000000000000000000000000000000000000000000000000020
+#define constant SYMBOL_LENGTH_OFFSET = 0x0000000000000000000000000000000000000000000000000000000000000040
+
+
+/**********************************************************************
+* Storage                                                             *
+***********************************************************************/
+#define constant OWNERS_MAPPING_STORAGE_SLOT = FREE_STORAGE_POINTER()
+#define constant BALANCES_MAPPING_STORAGE_SLOT = FREE_STORAGE_POINTER()
+#define constant ALL_TOKENS_STORAGE_SLOT = FREE_STORAGE_POINTER()
+#define constant HORSE_FED_TIMESTAMPS_STORAGE_SLOT = FREE_STORAGE_POINTER()
+
+/**********************************************************************
+* Entrypoint                                                          *
+***********************************************************************/
+#define macro MAIN() = takes(0) returns (0) {
+  0x00 calldataload push1 0xe0 shr           // [function_selector]
+
+  dup1 __FUNC_SIG(mintHorse)                 // [__FUNC_SIG(mintHorse), function_selector, function_selector]
+  eq mint_horse_dest jumpi                   // [function_selector]
+
+  dup1 __FUNC_SIG(feedHorse)                 // [__FUNC_SIG(feedHorse), function_selector, function_selector]
+  eq feed_horse_dest jumpi                   // [function_selector]
+
+  dup1 __FUNC_SIG(horseIdToFedTimeStamp)     // [__FUNC_SIG(horseIdToFedTimeStamp), function_selector, function_selector]
+  eq horse_id_to_fed_timestamp_dest jumpi    // [function_selector]
+
+  dup1 __FUNC_SIG(name)                      // [__FUNC_SIG(name), function_selector, function_selector]
+  eq name_dest jumpi                         // [function_selector]
+
+  dup1 __FUNC_SIG(symbol)                    // [__FUNC_SIG(symbol), function_selector, function_selector]
+  eq symbol_dest jumpi                       // [function_selector]
+
+  dup1 __FUNC_SIG(totalSupply)               // [__FUNC_SIG(totalSupply), function_selector, function_selector]
+  eq total_supply_dest jumpi                 // [function_selector]
+
+  dup1 __FUNC_SIG(ownerOf)                   // [__FUNC_SIG(ownerOf), function_selector, function_selector]
+  eq owner_of_dest jumpi                     // [function_selector]
+
+  dup1 __FUNC_SIG(balanceOf)                 // [__FUNC_SIG(balanceOf), function_selector, function_selector]
+  eq balance_of_dest jumpi                   // [function_selector]
+
+  dup1 __FUNC_SIG(HORSE_HAPPY_IF_FED_WITHIN) // [__FUNC_SIG(HORSE_HAPPY_IF_FED_WITHIN), function_selector, function_selector]
+  eq horse_happy_if_fed_within_dest jumpi    // [function_selector]
+
+  dup1 __FUNC_SIG(isHappyHorse)              // [__FUNC_SIG(isHappyHorse), function_selector, function_selector]
+  eq is_happy_horse_dest jumpi               // [function_selector]
+
+  0x00 0x00 revert                           // [0x00, 0x00] -> []
+
+  // Function destinations
+  mint_horse_dest:
+    pop MINT_HORSE()
+  feed_horse_dest:
+    pop FEED_HORSE()
+  horse_id_to_fed_timestamp_dest:
+    pop HORSE_ID_TO_FED_TIMESTAMP()
+  symbol_dest:
+    pop ERC721_SYMBOL()
+  name_dest:
+    pop ERC721_NAME()
+  total_supply_dest:
+    pop ERC721_TOTAL_SUPPLY()
+  owner_of_dest:
+    pop ERC721_OWNER_OF()
+  balance_of_dest:
+    pop ERC721_BALANCE_OF()
+  horse_happy_if_fed_within_dest:
+    pop READ_HORSE_HAPPY_IF_FED_WITHIN()
+  is_happy_horse_dest:
+    pop IS_HAPPY_HORSE()
+}
+
+/**********************************************************************
+* Constructor                                                         *
+***********************************************************************/
+#define macro CONSTRUCTOR() = takes(0) returns(0) {
+  ERC721_CONSTRUCTOR()
+}
+
+/**********************************************************************
+* Functions                                                           *
+***********************************************************************/
+/// @notice Is Happy Horse
+#define macro IS_HAPPY_HORSE() = takes(0) returns (0) {
+  [HORSE_FED_TIMESTAMPS_STORAGE_SLOT]      // [HORSE_FED_TIMESTAMPS_STORAGE_SLOT]
+  0x04 calldataload                        // [token_id, HORSE_FED_TIMESTAMPS_STORAGE_SLOT]
+  _HASHMAP_GET_SLOT_FROM_KEYS(0x00)        // [timestamp_slot]
+  sload                                    // [fed_timestamp]
+  timestamp                                // [timestamp, fed_timestamp]
+  dup2 dup2                                // [timestamp, fed_timestamp, timestamp, fed_timestamp]
+  sub                                      // [timestamp - fed_timestamp, timestamp, fed_timestamp]
+  [HORSE_HAPPY_IF_FED_WITHIN_SECONDS]      // [HORSE_HAPPY_IF_FED_WITHIN_SECONDS, timestamp - fed_timestamp, timestamp, fed_timestamp]
+  gt                                       // [timestamp - fed_timestamp > HORSE_HAPPY_IF_FED_WITHIN_SECONDS, timestamp, fed_timestamp]
+  start_return_true jumpi                  // [timestamp, fed_timestamp]
+  eq                                       // [timestamp == fed_timestamp]
+  start_return jump                        // []
+
+  start_return_true:
+  0x01
+
+  start_return:
+  0x00 mstore
+  0x20 0x00 return
+}
+
+/// @notice Horse Happy If Fed Within
+#define macro READ_HORSE_HAPPY_IF_FED_WITHIN() = takes(0) returns (0) {
+  [HORSE_HAPPY_IF_FED_WITHIN_SECONDS]      // [HORSE_HAPPY_IF_FED_WITHIN_SECONDS]
+  0x00 mstore                              // []
+  0x20 0x00 return                         // []
+}
+
+/// @notice Horse Id To Fed Timestamp
+#define macro HORSE_ID_TO_FED_TIMESTAMP() = takes(0) returns (0) {
+  [HORSE_FED_TIMESTAMPS_STORAGE_SLOT]     // [HORSE_FED_TIMESTAMPS_STORAGE_SLOT]
+  0x04 calldataload                       // [token_id, HORSE_FED_TIMESTAMPS_STORAGE_SLOT]
+  _HASHMAP_GET_SLOT_FROM_KEYS(0x00)       // [timestamp_slot]
+  sload                                   // [timestamp]
+  0x00 mstore                             // []
+  0x20 0x00 return
+}
+
+/// @notice Feed Horse
+#define macro FEED_HORSE() = takes(0) returns (0) {
+  _NON_PAYABLE()
+
+  [OWNERS_MAPPING_STORAGE_SLOT]            // [OWNERS_MAPPING_STORAGE_SLOT, token_id]
+  0x04 calldataload                        // [token_id, OWNERS_MAPPING_STORAGE_SLOT]
+  _HASHMAP_GET_SLOT_FROM_KEYS(0x00)        // [token_owner_slot]
+  sload                                    // [owner]
+  caller                                   // [caller, owner]
+  eq iszero                                // [caller != owner]
+  forbidden_jump_dest jumpi                // []
+
+  timestamp                                // [timestamp]
+  [HORSE_FED_TIMESTAMPS_STORAGE_SLOT]      // [HORSE_FED_TIMESTAMPS_STORAGE_SLOT, timestamp]
+  0x04 calldataload                        // [token_id, HORSE_FED_TIMESTAMPS_STORAGE_SLOT, timestamp]
+  _HASHMAP_GET_SLOT_FROM_KEYS(0x00)        // [timestamp_slot, timstamp]
+  sstore                                   // []
+  0x00 0x00 return
+
+  forbidden_jump_dest:
+    __ERROR(ForbiddenError)                // [error_selector]
+    0x00 mstore                            // []
+    0x04 0x00 revert
+}
+
+/// @notice Mint Horse
+#define macro MINT_HORSE() = takes(0) returns (0) {
+  _NON_PAYABLE()
+
+  [ALL_TOKENS_STORAGE_SLOT]               // [ALL_TOKENS_STORAGE_SLOT]
+  sload dup1                              // [token_id, token_id]
+  caller                                  // [caller, token_id, token_id]
+  swap1                                   // [token_id, caller, token_id]
+
+  [OWNERS_MAPPING_STORAGE_SLOT] swap1     // [token_id, OWNERS_MAPPING_STORAGE_SLOT, caller, token_id]
+  _HASHMAP_GET_SLOT_FROM_KEYS(0x00)       // [token_owner_slot, caller, token_id]
+  sstore                                  // [token_id]
+
+  [BALANCES_MAPPING_STORAGE_SLOT]          // [BALANCES_MAPPING_STORAGE_SLOT, token_id]
+  caller                                   // [msg.sender, BALANCES_MAPPING_STORAGE_SLOT, token_id]
+  _HASHMAP_GET_SLOT_FROM_KEYS(0x00)        // [balance_slot, token_id]
+  dup1                                     // [balance_slot, balance_slot, token_id]
+  sload                                    // [prev_balance, balance_slot, token_id]
+  0x01 add                                 // [prev_balance + 1, balance_slot, token_id]
+  swap1                                    // [balance_slot, balances[msg.sender] + 1, token_id]
+  sstore                                   // [token_id]
+
+  [ALL_TOKENS_STORAGE_SLOT]                // [ALL_TOKENS_STORAGE_SLOT, token_id]
+  0x00 mstore                              // [token_id]
+  dup1                                     // [token_id, token_id]
+  0x20 0x00 sha3                           // [keccak256(tokens_slot), token_id, token_id]
+  0x01 add                                 // [token_id_slot + token_id, token_id]
+  dup2                                     // [token_id, token_id_slot + token_id, token_id]
+  swap1                                    // [token_id_slot + token_id, token_id, token_id]
+  sstore                                   // [token_id]
+  dup1                                     // [token_id, token_id]
+  0x01 add                                 // [next_token_id, token_id]
+  [ALL_TOKENS_STORAGE_SLOT]                // [ALL_TOKENS_STORAGE_SLOT, next_token_id, token_id]
+  sstore                                   // [token_id]
+
+  caller 0x00 __EVENT_HASH(Transfer)       // [event_hash, from (0x00), to (msg.sender), token_id]
+  0x00 0x00 log4
+  0x00 0x00 return
+}
+
+
+/**********************************************************************
+* ERC721                                                              *
+***********************************************************************/
+
+/// @notice Name
+/// @notice Returns the token name string
+#define macro ERC721_NAME() = takes (0) returns (0) {
+  _GET_IMMUTABLE(NAME_OFFSET, 0x00)           // [name_value]
+  _GET_IMMUTABLE(NAME_LENGTH_OFFSET, 0x00)    // [name_length, name_value]
+  0x20 0x00 mstore                            // [name_length, name_value]
+  0x20 mstore                                 // [name_value]
+  0x40 mstore                                 // []
+  0x60 0x00 return                            // []
+}
+
+/// @notice Symbol
+/// @notice Returns the token symbol string
+#define macro ERC721_SYMBOL() = takes (0) returns (0) {
+  _GET_IMMUTABLE(SYMBOL_OFFSET, 0x00)         // [symbol_value]
+  _GET_IMMUTABLE(SYMBOL_LENGTH_OFFSET, 0x00)  // [symbol_length, symbol_value]
+  0x20 0x00 mstore                            // [symbol_length, symbol_value]
+  0x20 mstore                                 // [symbol_value]
+  0x40 mstore                                 // []
+  0x60 0x00 return                            // []
+}
+
+/// @notice Balance Of
+/// @notice Returns the number of tokens owned by the given address
+#define macro ERC721_BALANCE_OF() = takes (0) returns (0) {
+  [BALANCES_MAPPING_STORAGE_SLOT]            // [BALANCES_MAPPING_STORAGE_SLOT]
+  0x04 calldataload                          // [address, BALANCES_MAPPING_STORAGE_SLOT]
+  _HASHMAP_GET_SLOT_FROM_KEYS(0x00)          // [balance_slot]
+  sload                                      // [balance]
+  0x00 mstore                                // []
+  0x20 0x00 return                           // []
+}
+
+/// @notice Total Supply
+/// @notice Returns the total number of tokens in existence
+#define macro ERC721_TOTAL_SUPPLY() = takes (0) returns (0) {
+  [ALL_TOKENS_STORAGE_SLOT]                  // [ALL_TOKENS_STORAGE_SLOT]
+  sload                                      // [total_supply]
+  0x00 mstore                                // []
+  0x20 0x00 return                           // []
+}
+
+/// @notice Owner Of
+/// @notice Returns the owner of the token
+#define macro ERC721_OWNER_OF() = takes (0) returns(0) {
+  [OWNERS_MAPPING_STORAGE_SLOT]         // [OWNERS_MAPPING_STORAGE_SLOT]
+  0x04 calldataload                     // [token_id, OWNERS_MAPPING_STORAGE_SLOT]
+  _HASHMAP_GET_SLOT_FROM_KEYS(0x00)     // [token_owner_slot]
+  sload                                 // [owner]
+  0x00 mstore                           // []
+  0x20 0x00 return
+}
+
+#define macro ERC721_CONSTRUCTOR() = takes(0) returns(0) {
+  // Constructor arguments:
+  // ?, name_size, name, ?, symbol_size, symbol
+  // Example: 
+    // bytes.concat(abi.encode("Token"), abi.encode("TKN"))
+    // abi.encode("Token") = 0x00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000005546f6b656e000000000000000000000000000000000000000000000000000000
+  0xb                                     // [offset]
+  dup1                                    // [offset, offset]
+  codesize                                // [total_size, offset, offset]
+  sub                                     // [runtime_size, offset]
+  dup1                                    // [runtime_size, runtime_size, offset]
+  swap2                                   // [offset, runtime_size, runtime_size]
+  returndatasize                          // [return_offset, offset, runtime_size, runtime_size]
+  codecopy                                // [runtime_size]
+
+  // Return the runtime bytecode.
+  returndatasize                          // [return_offset, runtime_size]
+  return                                  // []
+}
+
+/**********************************************************************
+* Utils                                                               *
+***********************************************************************/
+
+#define macro _NON_PAYABLE() = takes (0) returns (0) {
+  0x00                            // [0x00]
+  callvalue                       // [msg.value, 0x00]
+  eq                              // [msg.value == 0x00]
+  do_not_throw_jump_dest jumpi
+  __ERROR(NonPayableError)        // [error_selector]
+  0x00 mstore
+  0x04 0x00 revert
+
+  // just continue exectution
+  do_not_throw_jump_dest:         // []
+}
+
+#define macro _HASHMAP_GET_SLOT_FROM_KEYS(memory_ptr) = takes(2) returns (1) {
+  // input stack: [key, slot]
+  <memory_ptr>           // [memory_ptr, key, slot]
+  mstore                 // [slot]
+  <memory_ptr> 0x20 add  // [memory_ptr + 0x20, slot]
+  mstore
+  0x40 <memory_ptr> sha3 // [keccak256(key | slot)]
+}
+
+#define macro _HASHMAP_ARRAY_GET_SLOT_FROM_KEYS(memory_ptr) = takes(2) returns (1) {
+  // input stack: [slot, index]
+  <memory_ptr>           // [memory_ptr, slot, index]
+  mstore                 // [index]
+  0x20 <memory_ptr> sha3 // [keccak256(slot), index)]
+  add                    // [keccak256(slot) + index]
+}
+
+/// @notice Retrives an "immutable" from the runtime bytecode. Borrowed from the huffmate library
+#define macro _GET_IMMUTABLE(offset_end, free_memory) = takes (0) returns (1) {
+  // each immutable is stored as a 32-byte word
+  0x20                        // [size]
+  <offset_end> codesize sub   // [offset_code, size]
+  <free_memory>               // [offset_memory, offset_code, size]
+  codecopy                    // []
+  <free_memory> mload         // [value]
+}
