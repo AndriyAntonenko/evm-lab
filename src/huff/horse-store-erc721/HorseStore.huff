@@ -27,9 +27,9 @@
 // #define function safeTransferFrom(address,address, uint256, bytes) nonpayable returns ()
 // #define function safeTransferFrom(address,address, uint256) nonpayable returns ()
 // #define function transferFrom(address,address, uint256) nonpayable returns ()
-// #define function approve(address,uint256) nonpayable returns ()
+#define function approve(address,uint256) nonpayable returns ()
+#define function getApproved(uint256) nonpayable returns (address)
 // #define function setApprovalForAll(address,bool) nonpayable returns ()
-// #define function getApproved(uint256) nonpayable returns (address)
 // #define function isApprovedForAll(address,address) nonpayable returns (bool)
 
 /**********************************************************************
@@ -37,11 +37,14 @@
 ***********************************************************************/
 #define error ForbiddenError()
 #define error NonPayableError()
+#define error ZeroValueError()
+#define error ERC721NonexistentToken(uint256)
 
 /**********************************************************************
 * Events                                                              *
 ***********************************************************************/
 #define event Transfer(address,address,uint256)
+#define event Approval(address,address,uint256)
 
 /**********************************************************************
 * Constants                                                           *
@@ -60,6 +63,7 @@
 #define constant BALANCES_MAPPING_STORAGE_SLOT = FREE_STORAGE_POINTER()
 #define constant ALL_TOKENS_STORAGE_SLOT = FREE_STORAGE_POINTER()
 #define constant HORSE_FED_TIMESTAMPS_STORAGE_SLOT = FREE_STORAGE_POINTER()
+#define constant TOKEN_APPROVALS_STORAGE_SLOT = FREE_STORAGE_POINTER()
 
 /**********************************************************************
 * Entrypoint                                                          *
@@ -72,6 +76,9 @@
 
   dup1 __FUNC_SIG(feedHorse)                 // [__FUNC_SIG(feedHorse), function_selector, function_selector]
   eq feed_horse_dest jumpi                   // [function_selector]
+
+  dup1 __FUNC_SIG(approve)                   // [__FUNC_SIG(approve), function_selector, function_selector]
+  eq approve_dest jumpi                      // [function_selector]
 
   dup1 __FUNC_SIG(horseIdToFedTimeStamp)     // [__FUNC_SIG(horseIdToFedTimeStamp), function_selector, function_selector]
   eq horse_id_to_fed_timestamp_dest jumpi    // [function_selector]
@@ -97,6 +104,9 @@
   dup1 __FUNC_SIG(isHappyHorse)              // [__FUNC_SIG(isHappyHorse), function_selector, function_selector]
   eq is_happy_horse_dest jumpi               // [function_selector]
 
+  dup1 __FUNC_SIG(getApproved)               // [__FUNC_SIG(getApproved), function_selector, function_selector]
+  eq get_approved_dest jumpi                 // [function_selector]
+
   0x00 0x00 revert                           // [0x00, 0x00] -> []
 
   // Function destinations
@@ -104,6 +114,8 @@
     pop MINT_HORSE()
   feed_horse_dest:
     pop FEED_HORSE()
+  approve_dest:
+    pop ERC721_APPROVE()
   horse_id_to_fed_timestamp_dest:
     pop HORSE_ID_TO_FED_TIMESTAMP()
   symbol_dest:
@@ -120,6 +132,8 @@
     pop READ_HORSE_HAPPY_IF_FED_WITHIN()
   is_happy_horse_dest:
     pop IS_HAPPY_HORSE()
+  get_approved_dest:
+    pop ERC721_GET_APPROVED()
 }
 
 /**********************************************************************
@@ -295,6 +309,41 @@
   0x20 0x00 return
 }
 
+/// @notice Approve
+#define macro ERC721_APPROVE() = takes (0) returns(0) {
+  _NON_PAYABLE()
+  0x04 calldataload                       // [spender]
+  dup1                                    // [spender, spender]
+  _NON_ZERO()                             // [spender]
+  0x24 calldataload                       // [token_id, spender]
+  dup1                                    // [token_id, token_id, spender]
+  _ONLY_OWNER()                           // [token_id, spender]
+  dup2 dup2                               // [token_id, spender, token_id, spender]
+  [TOKEN_APPROVALS_STORAGE_SLOT]          // [TOKEN_APPROVALS_STORAGE_SLOT, token_id, spender, token_id, spender]
+  swap1                                   // [token_id, TOKEN_APPROVALS_STORAGE_SLOT, spender, token_id spender]
+  _HASHMAP_GET_SLOT_FROM_KEYS(0x00)       // [approval_slot, spender, token_id, spender]
+  sstore                                  // [token_id, spender]
+  swap1                                   // [spender, token_id]
+  caller                                  // [msg.sender, spender, token_id]
+  __EVENT_HASH(Approval)                  // [event_hash, msg.sender, spender, token_id]
+  0x00 0x00 log4
+  0x00 0x00 return
+
+  forbidden_jump_dest:
+    __ERROR(ForbiddenError)               // [error_selector]
+    0x00 mstore                           // []
+    0x04 0x00 revert
+}
+
+#define macro ERC721_GET_APPROVED() = takes(0) returns(0) {
+  [TOKEN_APPROVALS_STORAGE_SLOT]          // [TOKEN_APPROVALS_STORAGE_SLOT]
+  0x04 calldataload                       // [token_id, TOKEN_APPROVALS_STORAGE_SLOT]
+  _HASHMAP_GET_SLOT_FROM_KEYS(0x00)       // [slot]
+  sload                                   // [approved]
+  0x00 mstore                             // []
+  0x20 0x00 return                        // []
+}
+
 #define macro ERC721_CONSTRUCTOR() = takes(0) returns(0) {
   // Constructor arguments:
   // ?, name_size, name, ?, symbol_size, symbol
@@ -316,6 +365,54 @@
 }
 
 /**********************************************************************
+* Internal                                                            *
+***********************************************************************/
+
+#define macro _REQUIRE_OWNABLE() = takes(1) returns(1) {
+  // input stack: [token_id]
+  dup1                                       // [token_id, token_id]
+  [OWNERS_MAPPING_STORAGE_SLOT]              // [OWNERS_MAPPING_STORAGE_SLOT, token_id, token_id]
+  swap1                                      // [token_id, OWNERS_MAPPING_STORAGE_SLOT, token_id]
+  _HASHMAP_GET_SLOT_FROM_KEYS(0x00)          // [owner_slot, token_id]
+  sload                                      // [owner]  
+  dup1                                       // [owner, owner, token_id]
+
+  0x00 eq                                    // [owner == 0x00, owner, token_id]
+  revert_non_existent_token_jump_dest jumpi  // [owner, token_id]
+
+  swap1                                      // [token_id, owner]
+  pop                                        // [owner]
+  existent_token_jump_dest jump              // []
+  
+  revert_non_existent_token_jump_dest:      // [owner, token_id]
+    __ERROR(ERC721NonexistentToken)         // [error_selector, owner, token_id]
+    0x00 mstore                             // [owner, token_id]
+    pop                                     // [token_id]
+    0x04 mstore                             // []
+    0x24 0x00 revert                        // []
+
+  existent_token_jump_dest:
+}
+
+#define macro _ONLY_OWNER() = takes(1) returns(0) {
+  // input stack: [token_id]
+  [OWNERS_MAPPING_STORAGE_SLOT]              // [OWNERS_MAPPING_STORAGE_SLOT, token_id]
+  swap1                                      // [token_id, OWNERS_MAPPING_STORAGE_SLOT]
+  _HASHMAP_GET_SLOT_FROM_KEYS(0x00)          // [owner_slot]
+  sload                                      // [owner]  
+
+  caller                                     // [caller, owner]
+  eq                                         // [caller == owner]
+  continue_jump_dest jumpi                   // []
+
+  __ERROR(ForbiddenError)                    // [error_selector]
+  0x00 mstore                                // []
+  0x04 0x00 revert
+
+  continue_jump_dest:
+}
+
+/**********************************************************************
 * Utils                                                               *
 ***********************************************************************/
 
@@ -323,13 +420,22 @@
   0x00                            // [0x00]
   callvalue                       // [msg.value, 0x00]
   eq                              // [msg.value == 0x00]
-  do_not_throw_jump_dest jumpi
+  continue_jump_dest jumpi
   __ERROR(NonPayableError)        // [error_selector]
   0x00 mstore
   0x04 0x00 revert
+  continue_jump_dest:         // []
+}
 
-  // just continue exectution
-  do_not_throw_jump_dest:         // []
+#define macro _NON_ZERO() = takes (1) returns(0) {
+  // input stack: [value]
+  0x00 eq                   // [value == 0]
+  iszero                    // [value != 0]
+  continue_jump_dest jumpi  // []
+  __ERROR(ZeroValueError)   // [error_selector]
+  0x00 mstore               // []
+  0x04 0x00 revert
+  continue_jump_dest:       // []
 }
 
 #define macro _HASHMAP_GET_SLOT_FROM_KEYS(memory_ptr) = takes(2) returns (1) {

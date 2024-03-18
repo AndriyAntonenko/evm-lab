@@ -121,6 +121,20 @@ abstract contract BaseTest is Test {
     assertEq(horseStore.isHappyHorse(horseId), true);
   }
 
+  function testErc721Approval(address randomOwner, address randomSpender) public {
+    vm.assume(randomOwner != address(0));
+    vm.assume(!_isContract(randomOwner));
+    vm.assume(randomSpender != address(0));
+    vm.assume(!_isContract(randomSpender));
+
+    uint256 horseId = horseStore.totalSupply();
+    vm.prank(randomOwner);
+    horseStore.mintHorse();
+    vm.prank(randomOwner);
+    horseStore.approve(randomSpender, horseId);
+    assertEq(horseStore.getApproved(horseId), randomSpender);
+  }
+
   /*//////////////////////////////////////////////////////////////
                             HELPER FUNCTIONS
     //////////////////////////////////////////////////////////////*/
