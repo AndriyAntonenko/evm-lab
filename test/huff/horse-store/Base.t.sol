@@ -13,7 +13,9 @@ abstract contract BaseTest is Test {
   string public constant NFT_NAME = "HorseStore";
   string public constant NFT_SYMBOL = "HS";
 
-  event Transfer(address indexed from, address indexed to, uint256 tokenId);
+  event Transfer(address indexed from, address indexed to, uint256 indexed tokenId);
+  event Approval(address indexed owner, address indexed approved, uint256 indexed tokenId);
+  event ApprovalForAll(address indexed owner, address indexed operator, bool approved);
 
   function setUp() public virtual {
     horseStore = new HorseStore();
@@ -48,6 +50,16 @@ abstract contract BaseTest is Test {
     horseStore.mintHorse();
     uint256 balanceAfter = horseStore.balanceOf(randomOwner);
     assertEq(balanceAfter, balanceBefore + 1);
+  }
+
+  function testMintingHorseEmitEvent(address randomOwner) public {
+    vm.assume(randomOwner != address(0));
+    vm.assume(!_isContract(randomOwner));
+
+    vm.expectEmit(true, true, false, true);
+    emit Transfer(address(0), randomOwner, horseStore.totalSupply());
+    vm.prank(randomOwner);
+    horseStore.mintHorse();
   }
 
   function testFeedingHorseOnlyOwnerCanFeed(address randomOwner, address anotherUser) public {
@@ -133,6 +145,46 @@ abstract contract BaseTest is Test {
     vm.prank(randomOwner);
     horseStore.approve(randomSpender, horseId);
     assertEq(horseStore.getApproved(horseId), randomSpender);
+  }
+
+  function testErc721ApprovalEmitEvent(address randomOwner, address randomSpender) public {
+    vm.assume(randomOwner != address(0));
+    vm.assume(!_isContract(randomOwner));
+    vm.assume(randomSpender != address(0));
+    vm.assume(!_isContract(randomSpender));
+
+    uint256 horseId = horseStore.totalSupply();
+    vm.prank(randomOwner);
+    horseStore.mintHorse();
+
+    vm.expectEmit(true, true, false, true);
+    emit Approval(randomOwner, randomSpender, horseId);
+    vm.prank(randomOwner);
+    horseStore.approve(randomSpender, horseId);
+  }
+
+  function testErc721SetApprovalForAll(address randomOwner, address randomOperator) public {
+    vm.assume(randomOwner != address(0));
+    vm.assume(!_isContract(randomOwner));
+    vm.assume(randomOperator != address(0));
+    vm.assume(!_isContract(randomOperator));
+
+    vm.prank(randomOwner);
+    horseStore.setApprovalForAll(randomOperator, true);
+    assertEq(horseStore.isApprovedForAll(randomOwner, randomOperator), true);
+  }
+
+  function testErc721SetApprovalForAllEmitsEvent(address randomOwner, address randomOperator) public {
+    vm.assume(randomOwner != address(0));
+    vm.assume(!_isContract(randomOwner));
+    vm.assume(randomOperator != address(0));
+    vm.assume(!_isContract(randomOperator));
+
+    vm.startPrank(randomOwner);
+    vm.expectEmit(true, true, false, true);
+    emit ApprovalForAll(randomOwner, randomOperator, true);
+    horseStore.setApprovalForAll(randomOperator, true);
+    vm.stopPrank();
   }
 
   /*//////////////////////////////////////////////////////////////
