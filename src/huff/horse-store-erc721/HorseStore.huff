@@ -387,71 +387,11 @@
 
 // calldata: [from, to, token_id]
 #define macro ERC721_TRANSFER_FROM() = takes(0) returns(0) {
-  0x24 calldataload                      // [to]
-  _NON_ZERO_RECEIVER(0x00)               // [to]
-
+  // from, to, token_id
   0x44 calldataload                      // [token_id]
-  _ERC721_OWNER_OF()                     // [owner]
-
-  dup1                                    // [owner, owner]
-  caller                                  // [msg.sender, owner, owner]
-  eq                                      // [msg.sender == owner, owner]
-  trasfer_dest jumpi                      // [owner]
-
-  caller                                  // [msg.sender, owner]
-  swap1                                   // [owner, msg.sender]
-  _ERC721_IS_APPROVED_FOR_ALL()           // [approved]
-  trasfer_dest jumpi                      // [owner]
-
-  0x44 calldataload                       // [token_id]
-  _ERC721_GET_APPROVED()                  // [approved_spender]
-  caller                                  // [msg.sender, approved_spender]
-  eq                                      // [msg.sender == approved_spender]
-  trasfer_dest jumpi                      // []
-
-  __ERROR(ERC721InsufficientApproval)     // [error_selector]
-  0x00 mstore                             // []
-  caller 0x04 mstore                      // []
-  0x44 calldataload 0x24 mstore           // []
-  0x24 0x00 revert
-
-  trasfer_dest:
-    0x04 calldataload                       // [from]
-    0x24 calldataload                       // [to, from]
-    0x44 calldataload                       // [token_id, to, from]
-    dup2                                    // [to, token_id, to, from]
-    swap1                                   // [token_id, to, to, from]
-
-    [OWNERS_MAPPING_STORAGE_SLOT]           // [OWNERS_MAPPING_STORAGE_SLOT, token_id, to, to, from]
-    swap1                                   // [token_id, OWNERS_MAPPING_STORAGE_SLOT, to, to, from]
-    _HASHMAP_GET_SLOT_FROM_KEYS(0x00)       // [token_owner_slot, to, to, from, ]
-    sstore                                  // [to, from]
-
-    [BALANCES_MAPPING_STORAGE_SLOT]         // [BALANCES_MAPPING_STORAGE_SLOT, to, from]
-    swap1                                   // [to, BALANCES_MAPPING_STORAGE_SLOT, from]
-    _HASHMAP_GET_SLOT_FROM_KEYS(0x00)       // [balance_slot, from]
-    dup1                                    // [balance_slot, balance_slot, from]
-    sload                                   // [prev_balance, balance_slot, from]
-    0x01 add                                // [prev_balance + 1, balance_slot, from]
-    swap1                                   // [balance_slot, prev_balance + 1, from]
-    sstore                                  // [from]
-
-    [BALANCES_MAPPING_STORAGE_SLOT]         // [BALANCES_MAPPING_STORAGE_SLOT, from]
-    swap1                                   // [from, BALANCES_MAPPING_STORAGE_SLOT]
-    _HASHMAP_GET_SLOT_FROM_KEYS(0x00)       // [balance_slot]
-    dup1                                    // [balance_slot, balance_slot]
-    sload                                   // [prev_from_balance, balance_slot]
-    0x01 swap1 sub                          // [prev_from_balance - 1, balance_slot]
-    swap1                                   // [balance_slot, prev_from_balance - 1]
-    sstore                                  // []
-
-    0x44 calldataload                       // [token_id]
-    0x24 calldataload                       // [to, token_id]
-    0x04 calldataload                       // [from, to, token_id]
-    __EVENT_HASH(Transfer)                  // [event_hash, from, to, token_id]
-    0x00 0x00 log4
-
-    0x00 0x00 return
+  0x24 calldataload                      // [to, token_id]
+  0x04 calldataload                      // [from, to, token_id]
+  _ERC721_TRANSFER_FROM()
 }
 
 #define macro ERC721_CONSTRUCTOR() = takes(0) returns(0) {
@@ -502,6 +442,77 @@
   [OPERATOR_APPROVALS_STORAGE_SLOT]               // [OPERATOR_APPROVALS_STORAGE_SLOT, owner, operator]
   _HASHMAP_2D_GET_SLOT_FROM_KEYS(0x00)            // [approval_slot]
   sload                                           // [approved]
+}
+
+#define macro _ERC721_TRANSFER_FROM() = takes(3) returns(0) {
+  // input stack: [from, to, token_id]
+  swap1                                  // [to, from, token_id]
+  _NON_ZERO_RECEIVER(0x00)               // [to, from, token_id]
+  swap2                                  // [token_id, from, to]
+  dup1                                   // [token_id, token_id, from, to]
+  _ERC721_OWNER_OF()                     // [owner, token_id, from, to]
+
+  dup1                                   // [owner, owner, token_id, from, to]
+  caller                                 // [msg.sender, owner, owner, token_id, from, to]
+  eq                                     // [msg.sender == owner, owner, token_id, from, to]
+  transfer_dest_with_pop jumpi           // [owner, token_id, from, to]
+
+  caller                                  // [msg.sender, owner, token_id, from, to]
+  swap1                                   // [owner, msg.sender, token_id, from, to]
+  _ERC721_IS_APPROVED_FOR_ALL()           // [approved, token_id, from, to]
+  transfer_dest jumpi                     // [token_id, from, to]
+
+  dup1                                    // [token_id, token_id, from, to]
+  _ERC721_GET_APPROVED()                  // [approved_spender, token_id, from, to]
+  caller                                  // [msg.sender, approved_spender, token_id, from, to]
+  eq                                      // [msg.sender == approved_spender, token_id, from, to]
+  transfer_dest jumpi                      // [token_id, from, to]
+
+  __ERROR(ERC721InsufficientApproval)     // [error_selector, token_id, from, to]
+  0x00 mstore                             // [token_id, from, to]
+  caller 0x04 mstore                      // [token_id, from, to]
+  0x24 mstore                             // [from, to]
+  0x24 0x00 revert
+
+  transfer_dest_with_pop:                 // [trash, token_id, from, to]
+  pop
+
+  transfer_dest:                           // [token_id, from, to]
+  dup3 dup3 dup3                          // [token_id, from, to, token_id, from, to]
+
+  [OWNERS_MAPPING_STORAGE_SLOT]           // [OWNERS_MAPPING_STORAGE_SLOT, token_id, from, to, token_id, from, to]
+  swap1                                   // [token_id, OWNERS_MAPPING_STORAGE_SLOT, from, to, token_id, from, to]
+  _HASHMAP_GET_SLOT_FROM_KEYS(0x00)       // [token_owner_slot, from, to, token_id, from, to]
+  swap1                                   // [from, token_owner_slot, to, token_id, from, to]
+  swap2                                   // [to, token_owner_slot, from, token_id, from, to]
+  swap1                                   // [token_owner_slot, to, from, token_id, from, to]
+  sstore                                  // [from, token_id, from, to]
+
+  [BALANCES_MAPPING_STORAGE_SLOT]         // [BALANCES_MAPPING_STORAGE_SLOT, from, token_id, from, to]
+  swap1                                   // [from, BALANCES_MAPPING_STORAGE_SLOT, token_id, from, to]
+  _HASHMAP_GET_SLOT_FROM_KEYS(0x00)       // [balance_slot, token_id, from, to]
+  dup1                                    // [balance_slot, balance_slot, token_id, from, to]
+  sload                                   // [prev_from_balance, balance_slot, token_id, from, to]
+  0x01 swap1 sub                          // [prev_from_balance - 1, balance_slot, token_id, from, to]
+  swap1                                   // [balance_slot, prev_from_balance - 1, token_id, from, to]
+  sstore                                  // [token_id, from, to]
+
+  swap2                                   // [to, from, token_id]
+  dup1                                    // [to, to, from, token_id]
+  [BALANCES_MAPPING_STORAGE_SLOT]         // [BALANCES_MAPPING_STORAGE_SLOT, to, to, from, token_id]
+  swap1                                   // [to, BALANCES_MAPPING_STORAGE_SLOT, to, from, token_id]
+  _HASHMAP_GET_SLOT_FROM_KEYS(0x00)       // [balance_slot, to, from, token_id]
+  dup1                                    // [balance_slot, balance_slot, to, from, token_id]
+  sload                                   // [prev_balance, balance_slot, to, from, token_id]
+  0x01 add                                // [prev_balance + 1, balance_slot, to, from, token_id]
+  swap1                                   // [balance_slot, prev_balance + 1, to, from, token_id]
+  sstore                                  // [to, from, token_id]
+
+  swap1                                   // [from, to, token_id]
+  __EVENT_HASH(Transfer)                  // [event_hash, from, to, token_id]
+  0x00 0x00 log4
+
+  0x00 0x00 return
 }
 
 
