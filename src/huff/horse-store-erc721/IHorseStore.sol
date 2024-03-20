@@ -7,7 +7,7 @@ import { IERC721Enumerable } from "@openzeppelin/contracts/token/ERC721/extensio
  * @title IHorseStore
  */
 interface IHorseStore is IERC721Enumerable {
-  error ForbiddenError();
+  error HorseStoreForbiddenError();
 
   function mintHorse() external;
 

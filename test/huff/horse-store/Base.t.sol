@@ -70,7 +70,7 @@ abstract contract BaseTest is Test {
     vm.prank(randomOwner);
     horseStore.mintHorse();
     vm.prank(anotherUser);
-    vm.expectRevert(IHorseStore.ForbiddenError.selector);
+    vm.expectRevert(IHorseStore.HorseStoreForbiddenError.selector);
     horseStore.feedHorse(horseId);
   }
 
@@ -185,6 +185,156 @@ abstract contract BaseTest is Test {
     emit ApprovalForAll(randomOwner, randomOperator, true);
     horseStore.setApprovalForAll(randomOperator, true);
     vm.stopPrank();
+  }
+
+  function testErc721TransferFromBalanesChanged(
+    address randomOwner,
+    address randomSpender,
+    address randomReceiver
+  )
+    public
+  {
+    vm.assume(randomOwner != randomReceiver && randomOwner != randomSpender && randomSpender != randomReceiver);
+    vm.assume(randomOwner != address(0));
+    vm.assume(!_isContract(randomOwner));
+    vm.assume(randomSpender != address(0));
+    vm.assume(!_isContract(randomSpender));
+    vm.assume(randomReceiver != address(0));
+    vm.assume(!_isContract(randomReceiver));
+
+    uint256 horseId = horseStore.totalSupply();
+    vm.prank(randomOwner);
+    horseStore.mintHorse();
+
+    vm.prank(randomOwner);
+    horseStore.approve(randomSpender, horseId);
+
+    uint256 prevReceiverBalance = horseStore.balanceOf(randomReceiver);
+    uint256 prevOwnerBalance = horseStore.balanceOf(randomOwner);
+
+    vm.prank(randomSpender);
+    horseStore.transferFrom(randomOwner, randomReceiver, horseId);
+
+    uint256 newReceiverBalance = horseStore.balanceOf(randomReceiver);
+    uint256 newOwnerBalance = horseStore.balanceOf(randomOwner);
+
+    assertEq(prevOwnerBalance - newOwnerBalance, 1);
+    assertEq(newReceiverBalance - prevReceiverBalance, 1);
+  }
+
+  function testErc721TransferFromOwnerChanged(
+    address randomOwner,
+    address randomSpender,
+    address randomReceiver
+  )
+    public
+  {
+    vm.assume(randomOwner != randomReceiver && randomOwner != randomSpender && randomSpender != randomReceiver);
+    vm.assume(randomOwner != address(0));
+    vm.assume(!_isContract(randomOwner));
+    vm.assume(randomSpender != address(0));
+    vm.assume(!_isContract(randomSpender));
+    vm.assume(randomReceiver != address(0));
+    vm.assume(!_isContract(randomReceiver));
+
+    uint256 horseId = horseStore.totalSupply();
+    vm.prank(randomOwner);
+    horseStore.mintHorse();
+
+    vm.prank(randomOwner);
+    horseStore.approve(randomSpender, horseId);
+    vm.prank(randomSpender);
+    horseStore.transferFrom(randomOwner, randomReceiver, horseId);
+    assertEq(horseStore.ownerOf(horseId), randomReceiver);
+  }
+
+  function testErc721TransferFromEmitsEvent(address randomOwner, address randomSpender, address randomReceiver) public {
+    vm.assume(randomOwner != randomReceiver && randomOwner != randomSpender && randomSpender != randomReceiver);
+    vm.assume(randomOwner != address(0));
+    vm.assume(!_isContract(randomOwner));
+    vm.assume(randomSpender != address(0));
+    vm.assume(!_isContract(randomSpender));
+    vm.assume(randomReceiver != address(0));
+    vm.assume(!_isContract(randomReceiver));
+
+    uint256 horseId = horseStore.totalSupply();
+    vm.prank(randomOwner);
+    horseStore.mintHorse();
+
+    vm.prank(randomOwner);
+    horseStore.approve(randomSpender, horseId);
+
+    vm.expectEmit(true, true, false, true);
+    emit Transfer(randomOwner, randomReceiver, horseId);
+    vm.prank(randomSpender);
+    horseStore.transferFrom(randomOwner, randomReceiver, horseId);
+  }
+
+  function testErc721TransferFromWorksWithApprovalForAll(
+    address randomOwner,
+    address randomSpender,
+    address randomReceiver
+  )
+    public
+  {
+    vm.assume(randomOwner != randomReceiver && randomOwner != randomSpender && randomSpender != randomReceiver);
+    vm.assume(randomOwner != address(0));
+    vm.assume(!_isContract(randomOwner));
+    vm.assume(randomSpender != address(0));
+    vm.assume(!_isContract(randomSpender));
+    vm.assume(randomReceiver != address(0));
+    vm.assume(!_isContract(randomReceiver));
+
+    uint256 horseId = horseStore.totalSupply();
+    vm.prank(randomOwner);
+    horseStore.mintHorse();
+
+    vm.prank(randomOwner);
+    horseStore.setApprovalForAll(randomSpender, true);
+
+    vm.prank(randomSpender);
+    horseStore.transferFrom(randomOwner, randomReceiver, horseId);
+    assertEq(horseStore.ownerOf(horseId), randomReceiver);
+  }
+
+  function testErc721TransferFromWorksFromOwner(address randomOwner, address randomReceiver) public {
+    vm.assume(randomOwner != randomReceiver);
+    vm.assume(randomOwner != address(0));
+    vm.assume(!_isContract(randomOwner));
+    vm.assume(randomReceiver != address(0));
+    vm.assume(!_isContract(randomReceiver));
+
+    uint256 horseId = horseStore.totalSupply();
+    vm.prank(randomOwner);
+    horseStore.mintHorse();
+
+    vm.prank(randomOwner);
+    horseStore.transferFrom(randomOwner, randomReceiver, horseId);
+    assertEq(horseStore.ownerOf(horseId), randomReceiver);
+  }
+
+  function testErc721TransferFromRevertWithoutApproval(
+    address randomOwner,
+    address randomeSpender,
+    address randomeReceiver
+  )
+    public
+  {
+    vm.assume(randomOwner != randomeReceiver && randomOwner != randomeSpender && randomeSpender != randomeReceiver);
+    vm.assume(randomOwner != address(0));
+    vm.assume(!_isContract(randomOwner));
+    vm.assume(randomeSpender != address(0));
+    vm.assume(!_isContract(randomeSpender));
+    vm.assume(randomeReceiver != address(0));
+    vm.assume(!_isContract(randomeReceiver));
+
+    uint256 horseId = horseStore.totalSupply();
+    vm.prank(randomOwner);
+    horseStore.mintHorse();
+
+    vm.expectRevert();
+    vm.prank(randomeSpender);
+    horseStore.transferFrom(randomOwner, randomeReceiver, horseId);
   }
 
   /*//////////////////////////////////////////////////////////////

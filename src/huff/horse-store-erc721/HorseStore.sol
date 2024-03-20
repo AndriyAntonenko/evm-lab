@@ -15,7 +15,7 @@ contract HorseStore is IHorseStore, ERC721Enumerable {
 
   modifier onlyOwner(uint256 horseId) {
     if (ownerOf(horseId) != msg.sender) {
-      revert ForbiddenError();
+      revert HorseStoreForbiddenError();
     }
     _;
   }

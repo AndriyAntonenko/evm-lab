@@ -26,7 +26,7 @@
 // @TODO: IERC721
 // #define function safeTransferFrom(address,address, uint256, bytes) nonpayable returns ()
 // #define function safeTransferFrom(address,address, uint256) nonpayable returns ()
-// #define function transferFrom(address,address, uint256) nonpayable returns ()
+#define function transferFrom(address,address, uint256) nonpayable returns ()
 #define function approve(address,uint256) nonpayable returns ()
 #define function getApproved(uint256) nonpayable returns (address)
 #define function setApprovalForAll(address,bool) nonpayable returns ()
@@ -35,12 +35,12 @@
 /**********************************************************************
 * Errors                                                              *
 ***********************************************************************/
-#define error ForbiddenError()
-#define error NonPayableError()
-#define error ZeroValueError()
-
+#define error HorseStoreForbiddenError()
 #define error ERC721InvalidOperator(address)
 #define error ERC721NonexistentToken(uint256)
+#define error ERC721InvalidReceiver(address)
+#define error ERC721NonexistentToken(uint256)
+#define error ERC721InsufficientApproval(address,uint256)
 
 /**********************************************************************
 * Events                                                              *
@@ -85,6 +85,9 @@
 
   dup1 __FUNC_SIG(setApprovalForAll)         // [__FUNC_SIG(transferFrom), function_selector, function_selector]
   eq set_approval_for_all_dest jumpi         // [function_selector]
+
+  dup1 __FUNC_SIG(transferFrom)              // [__FUNC_SIG(transferFrom), function_selector, function_selector]
+  eq transfer_from_dest jumpi                // [function_selector]
 
   dup1 __FUNC_SIG(horseIdToFedTimeStamp)     // [__FUNC_SIG(horseIdToFedTimeStamp), function_selector, function_selector]
   eq horse_id_to_fed_timestamp_dest jumpi    // [function_selector]
@@ -147,6 +150,8 @@
     pop ERC721_GET_APPROVED()
   is_approved_for_all_dest:
     pop ERC721_IS_APPROVED_FOR_ALL()
+  transfer_from_dest:
+    pop ERC721_TRANSFER_FROM()
 }
 
 /**********************************************************************
@@ -219,7 +224,7 @@
   0x00 0x00 return
 
   forbidden_jump_dest:
-    __ERROR(ForbiddenError)                // [error_selector]
+    __ERROR(HorseStoreForbiddenError)      // [error_selector]
     0x00 mstore                            // []
     0x04 0x00 revert
 }
@@ -315,10 +320,8 @@
 /// @notice Owner Of
 /// @notice Returns the owner of the token
 #define macro ERC721_OWNER_OF() = takes (0) returns(0) {
-  [OWNERS_MAPPING_STORAGE_SLOT]         // [OWNERS_MAPPING_STORAGE_SLOT]
-  0x04 calldataload                     // [token_id, OWNERS_MAPPING_STORAGE_SLOT]
-  _HASHMAP_GET_SLOT_FROM_KEYS(0x00)     // [token_owner_slot]
-  sload                                 // [owner]
+  0x04 calldataload                     // [token_id]
+  _ERC721_OWNER_OF()                    // [owner]
   0x00 mstore                           // []
   0x20 0x00 return
 }
@@ -326,8 +329,7 @@
 /// @notice Approve
 #define macro ERC721_APPROVE() = takes (0) returns(0) {
   _NON_PAYABLE()
-  0x04 calldataload dup1                  // [spender, spender]
-  _NON_ZERO()                             // [spender]
+  0x04 calldataload                       // [spender, spender]
 
   0x24 calldataload                       // [token_id, spender]
   dup1                                    // [token_id, token_id, spender]
@@ -343,18 +345,11 @@
   __EVENT_HASH(Approval)                  // [event_hash, msg.sender, spender, token_id]
   0x00 0x00 log4
   0x00 0x00 return
-
-  forbidden_jump_dest:
-    __ERROR(ForbiddenError)               // [error_selector]
-    0x00 mstore                           // []
-    0x04 0x00 revert
 }
 
 #define macro ERC721_GET_APPROVED() = takes(0) returns(0) {
-  [TOKEN_APPROVALS_STORAGE_SLOT]          // [TOKEN_APPROVALS_STORAGE_SLOT]
   0x04 calldataload                       // [token_id, TOKEN_APPROVALS_STORAGE_SLOT]
-  _HASHMAP_GET_SLOT_FROM_KEYS(0x00)       // [slot]
-  sload                                   // [approved]
+  _ERC721_GET_APPROVED()
   0x00 mstore                             // []
   0x20 0x00 return                        // []
 }
@@ -363,7 +358,7 @@
   _NON_PAYABLE()
   0x04 calldataload                       // [approved]
   0x24 calldataload                       // [operator, approved]
-  swap1
+  swap1                                   // [approved, operator]
 
   _VALIDATE_OPERATOR()                    // [operator, approved]
 
@@ -385,11 +380,78 @@
 #define macro ERC721_IS_APPROVED_FOR_ALL() = takes(0) returns(0) {
   0x24 calldataload                       // [operator]
   0x04 calldataload                       // [owner, operator]
-  [OPERATOR_APPROVALS_STORAGE_SLOT]       // [OPERATOR_APPROVALS_STORAGE_SLOT, owner, operator]
-  _HASHMAP_2D_GET_SLOT_FROM_KEYS(0x00)    // [approval_slot]
-  sload
+  _ERC721_IS_APPROVED_FOR_ALL()           // [approved]
   0x00 mstore
   0x20 0x00 return
+}
+
+// calldata: [from, to, token_id]
+#define macro ERC721_TRANSFER_FROM() = takes(0) returns(0) {
+  0x24 calldataload                      // [to]
+  _NON_ZERO_RECEIVER(0x00)               // [to]
+
+  0x44 calldataload                      // [token_id]
+  _ERC721_OWNER_OF()                     // [owner]
+
+  dup1                                    // [owner, owner]
+  caller                                  // [msg.sender, owner, owner]
+  eq                                      // [msg.sender == owner, owner]
+  trasfer_dest jumpi                      // [owner]
+
+  caller                                  // [msg.sender, owner]
+  swap1                                   // [owner, msg.sender]
+  _ERC721_IS_APPROVED_FOR_ALL()           // [approved]
+  trasfer_dest jumpi                      // [owner]
+
+  0x44 calldataload                       // [token_id]
+  _ERC721_GET_APPROVED()                  // [approved_spender]
+  caller                                  // [msg.sender, approved_spender]
+  eq                                      // [msg.sender == approved_spender]
+  trasfer_dest jumpi                      // []
+
+  __ERROR(ERC721InsufficientApproval)     // [error_selector]
+  0x00 mstore                             // []
+  caller 0x04 mstore                      // []
+  0x44 calldataload 0x24 mstore           // []
+  0x24 0x00 revert
+
+  trasfer_dest:
+    0x04 calldataload                       // [from]
+    0x24 calldataload                       // [to, from]
+    0x44 calldataload                       // [token_id, to, from]
+    dup2                                    // [to, token_id, to, from]
+    swap1                                   // [token_id, to, to, from]
+
+    [OWNERS_MAPPING_STORAGE_SLOT]           // [OWNERS_MAPPING_STORAGE_SLOT, token_id, to, to, from]
+    swap1                                   // [token_id, OWNERS_MAPPING_STORAGE_SLOT, to, to, from]
+    _HASHMAP_GET_SLOT_FROM_KEYS(0x00)       // [token_owner_slot, to, to, from, ]
+    sstore                                  // [to, from]
+
+    [BALANCES_MAPPING_STORAGE_SLOT]         // [BALANCES_MAPPING_STORAGE_SLOT, to, from]
+    swap1                                   // [to, BALANCES_MAPPING_STORAGE_SLOT, from]
+    _HASHMAP_GET_SLOT_FROM_KEYS(0x00)       // [balance_slot, from]
+    dup1                                    // [balance_slot, balance_slot, from]
+    sload                                   // [prev_balance, balance_slot, from]
+    0x01 add                                // [prev_balance + 1, balance_slot, from]
+    swap1                                   // [balance_slot, prev_balance + 1, from]
+    sstore                                  // [from]
+
+    [BALANCES_MAPPING_STORAGE_SLOT]         // [BALANCES_MAPPING_STORAGE_SLOT, from]
+    swap1                                   // [from, BALANCES_MAPPING_STORAGE_SLOT]
+    _HASHMAP_GET_SLOT_FROM_KEYS(0x00)       // [balance_slot]
+    dup1                                    // [balance_slot, balance_slot]
+    sload                                   // [prev_from_balance, balance_slot]
+    0x01 swap1 sub                          // [prev_from_balance - 1, balance_slot]
+    swap1                                   // [balance_slot, prev_from_balance - 1]
+    sstore                                  // []
+
+    0x44 calldataload                       // [token_id]
+    0x24 calldataload                       // [to, token_id]
+    0x04 calldataload                       // [from, to, token_id]
+    __EVENT_HASH(Transfer)                  // [event_hash, from, to, token_id]
+    0x00 0x00 log4
+
+    0x00 0x00 return
 }
 
 #define macro ERC721_CONSTRUCTOR() = takes(0) returns(0) {
@@ -415,6 +477,45 @@
 /**********************************************************************
 * Internal                                                            *
 ***********************************************************************/
+
+#define macro _ERC721_GET_APPROVED() = takes(1) returns(0) {
+  // input stack: [token_id]
+  [TOKEN_APPROVALS_STORAGE_SLOT]                  // [TOKEN_APPROVALS_STORAGE_SLOT, token_id]
+  swap1                                           // [token_id, TOKEN_APPROVALS_STORAGE_SLOT]
+  _HASHMAP_GET_SLOT_FROM_KEYS(0x00)       // [slot]
+  sload                                           // [approved_spender]
+}
+
+
+/// @notice Owner Of
+/// @notice Returns the owner of the token
+#define macro _ERC721_OWNER_OF() = takes (1) returns(1) {
+  // input stack: [token_id]
+  [OWNERS_MAPPING_STORAGE_SLOT]         // [OWNERS_MAPPING_STORAGE_SLOT, token_id]
+  swap1                                 // [token_id, OWNERS_MAPPING_STORAGE_SLOT]
+  _HASHMAP_GET_SLOT_FROM_KEYS(0x00)     // [token_owner_slot]
+  sload                                 // [owner]
+}
+
+#define macro _ERC721_IS_APPROVED_FOR_ALL() = takes(2) returns(1) {
+  // input stack: [owner, operator]
+  [OPERATOR_APPROVALS_STORAGE_SLOT]               // [OPERATOR_APPROVALS_STORAGE_SLOT, owner, operator]
+  _HASHMAP_2D_GET_SLOT_FROM_KEYS(0x00)            // [approval_slot]
+  sload                                           // [approved]
+}
+
+
+#define macro _NON_ZERO_RECEIVER(memory_ptr) = takes(1) returns(1) {
+  // input stack: [receiver]
+  dup1 0x00 eq                                // [receiver == 0x00, receiver]
+  iszero                                      // [receiver != 0x00, receiver]
+  continue_jump_dest jumpi                    // [receiver]
+  __ERROR(ERC721InvalidReceiver)              // [error_selector, receiver]
+  <memory_ptr> mstore                         // [receiver]
+  <memory_ptr> 0x04 add mstore                // []
+  0x24 <memory_ptr> revert                    // []
+  continue_jump_dest:                         // [receiver]
+}
 
 #define macro _VALIDATE_OPERATOR() = takes(1) returns(1) {
   // input stack: [operator]
@@ -458,21 +559,8 @@
   callvalue                       // [msg.value, 0x00]
   eq                              // [msg.value == 0x00]
   continue_jump_dest jumpi
-  __ERROR(NonPayableError)        // [error_selector]
-  0x00 mstore
-  0x04 0x00 revert
+  0x00 0x00 revert
   continue_jump_dest:         // []
-}
-
-#define macro _NON_ZERO() = takes (1) returns(0) {
-  // input stack: [value]
-  0x00 eq                   // [value == 0]
-  iszero                    // [value != 0]
-  continue_jump_dest jumpi  // []
-  __ERROR(ZeroValueError)   // [error_selector]
-  0x00 mstore               // []
-  0x04 0x00 revert
-  continue_jump_dest:       // []
 }
 
 #define macro _HASHMAP_GET_SLOT_FROM_KEYS(memory_ptr) = takes(2) returns (1) {
