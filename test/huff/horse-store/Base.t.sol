@@ -337,6 +337,58 @@ abstract contract BaseTest is Test {
     horseStore.transferFrom(randomOwner, randomeReceiver, horseId);
   }
 
+  function testErc721EnumerableTokenOfOwnerByIndex(address randomOwner) public {
+    vm.assume(randomOwner != address(0));
+    vm.assume(!_isContract(randomOwner));
+
+    vm.startPrank(randomOwner);
+    horseStore.mintHorse(); // token id 0, index 0
+    horseStore.mintHorse(); // token id 1, index 1
+    horseStore.mintHorse(); // token id 2, index 2
+    vm.stopPrank();
+
+    assertEq(horseStore.tokenOfOwnerByIndex(randomOwner, 0), 0);
+    assertEq(horseStore.tokenOfOwnerByIndex(randomOwner, 1), 1);
+    assertEq(horseStore.tokenOfOwnerByIndex(randomOwner, 2), 2);
+  }
+
+  function testErc721EnumerableTokenOfOwnerByIndexRevertsOutOfBounds(address randomOwner) public {
+    vm.assume(randomOwner != address(0));
+    vm.assume(!_isContract(randomOwner));
+
+    vm.prank(randomOwner);
+    horseStore.mintHorse();
+
+    vm.expectRevert();
+    horseStore.tokenOfOwnerByIndex(randomOwner, 1);
+  }
+
+  function testErc721EnumerableTokenByIndex(address randomOwner) public {
+    vm.assume(randomOwner != address(0));
+    vm.assume(!_isContract(randomOwner));
+
+    vm.startPrank(randomOwner);
+    horseStore.mintHorse(); // token id 0, index 0
+    horseStore.mintHorse(); // token id 1, index 1
+    horseStore.mintHorse(); // token id 2, index 2
+    vm.stopPrank();
+
+    assertEq(horseStore.tokenByIndex(0), 0);
+    assertEq(horseStore.tokenByIndex(1), 1);
+    assertEq(horseStore.tokenByIndex(2), 2);
+  }
+
+  function textErc721EnumerableTokenByIndexRevertsOutOfBounds(address randomOwner) public {
+    vm.assume(randomOwner != address(0));
+    vm.assume(!_isContract(randomOwner));
+
+    vm.prank(randomOwner);
+    horseStore.mintHorse();
+
+    vm.expectRevert();
+    horseStore.tokenByIndex(1);
+  }
+
   /*//////////////////////////////////////////////////////////////
                             HELPER FUNCTIONS
     //////////////////////////////////////////////////////////////*/

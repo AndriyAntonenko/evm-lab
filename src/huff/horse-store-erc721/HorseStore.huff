@@ -19,9 +19,8 @@
 #define function symbol() nonpayable returns (string)
 #define function totalSupply() nonpayable returns (uint256)
 
-// @TODO: IERC721Enumerable
-// #define function tokenByIndex(uint256 index) nonpayable view returns (uint256)
-// #define function tokenOfOwnerByIndex(address owner, uint256 index) nonpayable view returns (uint256)
+#define function tokenByIndex(uint256 index) view returns (uint256)
+#define function tokenOfOwnerByIndex(address owner, uint256 index) view returns (uint256)
 
 // @TODO: IERC721
 // #define function safeTransferFrom(address,address, uint256, bytes) nonpayable returns ()
@@ -41,6 +40,7 @@
 #define error ERC721InvalidReceiver(address)
 #define error ERC721NonexistentToken(uint256)
 #define error ERC721InsufficientApproval(address,uint256)
+#define error ERC721OutOfBoundsIndex(address, uint256)
 
 /**********************************************************************
 * Events                                                              *
@@ -63,10 +63,14 @@
 ***********************************************************************/
 #define constant OWNERS_MAPPING_STORAGE_SLOT       = FREE_STORAGE_POINTER()
 #define constant BALANCES_MAPPING_STORAGE_SLOT     = FREE_STORAGE_POINTER()
-#define constant ALL_TOKENS_STORAGE_SLOT           = FREE_STORAGE_POINTER()
 #define constant HORSE_FED_TIMESTAMPS_STORAGE_SLOT = FREE_STORAGE_POINTER()
 #define constant TOKEN_APPROVALS_STORAGE_SLOT      = FREE_STORAGE_POINTER()
 #define constant OPERATOR_APPROVALS_STORAGE_SLOT   = FREE_STORAGE_POINTER()
+
+#define constant ALL_TOKENS_STORAGE_SLOT           = FREE_STORAGE_POINTER()
+#define constant ALL_TOKENS_INDEX_STORAGE_SLOT     = FREE_STORAGE_POINTER()
+#define constant OWNED_TOKENS_STORAGE_SLOT         = FREE_STORAGE_POINTER()
+#define constant OWNED_TOKENS_INDEX_STORAGE_SLOT   = FREE_STORAGE_POINTER()
 
 /**********************************************************************
 * Entrypoint                                                          *
@@ -119,6 +123,12 @@
   dup1 __FUNC_SIG(isApprovedForAll)          // [__FUNC_SIG(isApprovedForAll), function_selector, function_selector]
   eq is_approved_for_all_dest jumpi          // [function_selector]
 
+  dup1 __FUNC_SIG(tokenOfOwnerByIndex)       // [__FUNC_SIG(tokenOfOwnerByIndex), function_selector, function_selector]
+  eq token_of_owner_by_index_dest jumpi      // [function_selector]
+
+  dup1 __FUNC_SIG(tokenByIndex)              // [__FUNC_SIG(tokenByIndex), function_selector, function_selector]
+  eq token_by_index_dest jumpi // [function_selector]
+
   0x00 0x00 revert                           // [0x00, 0x00] -> []
 
   // Function destinations
@@ -152,6 +162,10 @@
     pop ERC721_IS_APPROVED_FOR_ALL()
   transfer_from_dest:
     pop ERC721_TRANSFER_FROM()
+  token_of_owner_by_index_dest:
+    pop ERC721_ENUMERABLE_TOKEN_OF_OWNER_BY_INDEX()
+  token_by_index_dest:
+    pop ERC721_ENUMERABLE_TOKEN_BY_INDEX()
 }
 
 /**********************************************************************
@@ -233,8 +247,8 @@
 #define macro MINT_HORSE() = takes(0) returns (0) {
   _NON_PAYABLE()
 
-  [ALL_TOKENS_STORAGE_SLOT]               // [ALL_TOKENS_STORAGE_SLOT]
-  sload dup1                              // [token_id, token_id]
+  _ERC721_TOTAL_SUPPLY()                  // [token_id]
+  dup1                                    // [token_id, token_id]
   caller                                  // [caller, token_id, token_id]
   swap1                                   // [token_id, caller, token_id]
 
@@ -251,18 +265,12 @@
   swap1                                    // [balance_slot, balances[msg.sender] + 1, token_id]
   sstore                                   // [token_id]
 
-  [ALL_TOKENS_STORAGE_SLOT]                // [ALL_TOKENS_STORAGE_SLOT, token_id]
-  0x00 mstore                              // [token_id]
-  dup1                                     // [token_id, token_id]
-  0x20 0x00 sha3                           // [keccak256(tokens_slot), token_id, token_id]
-  0x01 add                                 // [token_id_slot + token_id, token_id]
-  dup2                                     // [token_id, token_id_slot + token_id, token_id]
-  swap1                                    // [token_id_slot + token_id, token_id, token_id]
-  sstore                                   // [token_id]
-  dup1                                     // [token_id, token_id]
-  0x01 add                                 // [next_token_id, token_id]
-  [ALL_TOKENS_STORAGE_SLOT]                // [ALL_TOKENS_STORAGE_SLOT, next_token_id, token_id]
-  sstore                                   // [token_id]
+  dup1                                              // [token_id, token_id]
+  _ERC721_ENUMERABLE_ADD_TO_ALL_TOKENS_ENURATIONS() // [token_id]
+
+  dup1                                              // [token_id, token_id]
+  caller                                            // [msg.sender, token_id, token_id]
+  _ERC721_ENUMERABLE_ADD_TO_OWNER_ENUMERATIONS()    // [token_id]
 
   caller 0x00                              // [from (0x00), to (msg.sender), token_id]
   __EVENT_HASH(Transfer)                   // [event_hash, from (0x00), to (msg.sender), token_id]
@@ -270,6 +278,57 @@
   0x00 0x00 return
 }
 
+/**********************************************************************
+* ERC721 Enumerable                                                   *
+***********************************************************************/
+
+#define macro ERC721_ENUMERABLE_TOKEN_OF_OWNER_BY_INDEX() = takes(0) returns(0) {
+  0x04 calldataload                        // [owner]
+  0x24 calldataload                        // [index, owner]
+  swap1                                    // [owner, index]
+  dup2 dup2                                // [owner, index, owner, index]
+
+  _ERC721_BALANCE_OF()                     // [balance, index, owner, index]
+
+  gt                                       // [balance > index, owner, index]
+  iszero                                   // [balance <= index, owner, index]
+  out_of_bounds_jump_dest jumpi            // [owner, index]
+
+  [OWNED_TOKENS_STORAGE_SLOT]              // [OWNED_TOKENS_STORAGE_SLOT, owner, index]
+  _HASHMAP_2D_GET_SLOT_FROM_KEYS(0x00)     // [slot]
+  sload                                    // [token_id]
+  0x00 mstore
+  0x20 0x00 return
+
+  out_of_bounds_jump_dest:
+    __ERROR(ERC721OutOfBoundsIndex)         // [error_selector, owner, index]
+    0x00 mstore                             // [owner, index]
+    0x04 mstore                             // [index]
+    0x24 mstore                             // []
+    0x44 0x00 revert
+}
+
+#define macro ERC721_ENUMERABLE_TOKEN_BY_INDEX() = takes(0) returns(0) {
+  0x04 calldataload                        // [index]
+  dup1                                     // [index, index]
+  _ERC721_TOTAL_SUPPLY()                   // [total_supply, index, index]
+
+  gt iszero                                // [total_supply <= index, index]
+  out_of_bounds_jump_dest jumpi            // [index]
+
+  [ALL_TOKENS_STORAGE_SLOT]                // [ALL_TOKENS_STORAGE_SLOT, index]
+  _HASHMAP_ARRAY_GET_SLOT_FROM_KEYS(0x00)  // [slot]
+  sload                                    // [token_id]
+  0x00 mstore
+  0x20 0x00 return
+
+  out_of_bounds_jump_dest:
+    0x00 __ERROR(ERC721OutOfBoundsIndex)    // [error_selector, owner(0x00), index]
+    0x00 mstore                             // [owner, index]
+    0x04 mstore                             // [index]
+    0x24 mstore                             // []
+    0x44 0x00 revert
+}
 
 /**********************************************************************
 * ERC721                                                              *
@@ -300,10 +359,8 @@
 /// @notice Balance Of
 /// @notice Returns the number of tokens owned by the given address
 #define macro ERC721_BALANCE_OF() = takes (0) returns (0) {
-  [BALANCES_MAPPING_STORAGE_SLOT]            // [BALANCES_MAPPING_STORAGE_SLOT]
-  0x04 calldataload                          // [address, BALANCES_MAPPING_STORAGE_SLOT]
-  _HASHMAP_GET_SLOT_FROM_KEYS(0x00)          // [balance_slot]
-  sload                                      // [balance]
+  0x04 calldataload                          // [address]
+  _ERC721_BALANCE_OF()                       // [balance]
   0x00 mstore                                // []
   0x20 0x00 return                           // []
 }
@@ -418,12 +475,75 @@
 * Internal                                                            *
 ***********************************************************************/
 
+#define macro _ERC721_ENUMERABLE_ADD_TO_OWNER_ENUMERATIONS() = takes(2) returns(0) {
+  // input stack: [owner, token_id]
+  dup2                                       // [token_id, owner, token_id]
+  swap1                                      // [owner, token_id, token_id]
+  dup1                                       // [owner, owner, owner, token_id, token_id]
+
+  _ERC721_BALANCE_OF()                       // [balance, owner, token_id, token_id]
+  0x01 swap1 sub                             // [index, owner, token_id, token_id]
+  dup1                                       // [index, index, owner, token_id, token_id]
+  swap2                                      // [owner, index, index, token_id, token_id]
+
+  [OWNED_TOKENS_STORAGE_SLOT]                // [OWNED_TOKENS_STORAGE_SLOT, owner, index, index, token_id, token_id]
+  _HASHMAP_2D_GET_SLOT_FROM_KEYS(0x00)       // [owned_tokens_slot, index, token_id, token_id]
+  swap1 swap2 swap1                          // [owned_tokens_slot, token_id, index, token_id]
+  sstore                                     // [index, token_id]
+
+  swap1                                      // [token_id, index]
+  [OWNED_TOKENS_INDEX_STORAGE_SLOT]          // [OWNED_TOKENS_INDEX_STORAGE_SLOT, token_id, index]
+  swap1                                      // [token_id, OWNED_TOKENS_INDEX_STORAGE_SLOT, index]
+  _HASHMAP_GET_SLOT_FROM_KEYS(0x00)          // [slot, index]
+  sstore                                     // [index]
+}
+
+#define macro _ERC721_ENUMERABLE_ADD_TO_ALL_TOKENS_ENURATIONS() = takes(1) returns(0) {
+  // input stack: [token_id]
+  dup1
+  [ALL_TOKENS_STORAGE_SLOT]                 // [index, token_id, token_id]
+  [ALL_TOKENS_INDEX_STORAGE_SLOT]           // [ALL_TOKENS_INDEX_STORAGE_SLOT, index, token_id, token_id]
+  swap1                                     // [index, ALL_TOKENS_INDEX_STORAGE_SLOT, token_id, token_id]
+  swap2                                     // [token_id, ALL_TOKENS_INDEX_STORAGE_SLOT, index, token_id]
+  _HASHMAP_GET_SLOT_FROM_KEYS(0x00)         // [_allTokensIndex_slot, index, token_id]
+  sstore                                    // [token_id]
+
+  [ALL_TOKENS_STORAGE_SLOT]                 // [ALL_TOKENS_STORAGE_SLOT, token_id] 
+  dup1                                      // [ALL_TOKENS_STORAGE_SLOT, ALL_TOKENS_STORAGE_SLOT, token_id]
+  sload                                     // [length, ALL_TOKENS_STORAGE_SLOT, token_id]
+  swap1                                     // [ALL_TOKENS_STORAGE_SLOT, length, token_id]
+  _HASHMAP_ARRAY_GET_SLOT_FROM_KEYS(0x00)   // [slot, token_id]
+  sstore                                    // []
+
+  [ALL_TOKENS_STORAGE_SLOT]                 // [ALL_TOKENS_STORAGE_SLOT]
+  dup1                                      // [ALL_TOKENS_STORAGE_SLOT, ALL_TOKENS_STORAGE_SLOT]
+  sload                                     // [length, ALL_TOKENS_STORAGE_SLOT]
+  0x01 add                                  // [length + 1, ALL_TOKENS_STORAGE_SLOT]
+  swap1                                     // [ALL_TOKENS_STORAGE_SLOT, length + 1]
+  sstore                                    // []
+}
+
+/// @notice Balance Of
+/// @notice Returns the number of tokens owned by the given address
+#define macro _ERC721_BALANCE_OF() = takes (1) returns (1) {
+  // input stack: [address]
+  [BALANCES_MAPPING_STORAGE_SLOT]            // [BALANCES_MAPPING_STORAGE_SLOT, address]
+  swap1                                      // [address, BALANCES_MAPPING_STORAGE_SLOT]
+  _HASHMAP_GET_SLOT_FROM_KEYS(0x00)          // [balance_slot]
+  sload                                      // [balance]
+}
+
 #define macro _ERC721_GET_APPROVED() = takes(1) returns(0) {
   // input stack: [token_id]
   [TOKEN_APPROVALS_STORAGE_SLOT]                  // [TOKEN_APPROVALS_STORAGE_SLOT, token_id]
   swap1                                           // [token_id, TOKEN_APPROVALS_STORAGE_SLOT]
-  _HASHMAP_GET_SLOT_FROM_KEYS(0x00)       // [slot]
+  _HASHMAP_GET_SLOT_FROM_KEYS(0x00)               // [slot]
   sload                                           // [approved_spender]
+}
+
+#define macro _ERC721_TOTAL_SUPPLY() = takes(0) returns(1) {
+  [ALL_TOKENS_STORAGE_SLOT]                  // [ALL_TOKENS_STORAGE_SLOT]
+  sload                                      // [total_supply]
 }
 
 
@@ -444,6 +564,8 @@
   sload                                           // [approved]
 }
 
+// @TODO: Implement safeTransferFrom
+// @TODO: update enumerations on transfer
 #define macro _ERC721_TRANSFER_FROM() = takes(3) returns(0) {
   // input stack: [from, to, token_id]
   swap1                                  // [to, from, token_id]
