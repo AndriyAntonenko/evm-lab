@@ -1,4 +1,5 @@
 /**********************************************************************
+* @TODO: move to another repo and add to the portfolio                *
 * HUFF implementation of ./HorseStore.sol                             *
 ***********************************************************************/
 
@@ -31,6 +32,8 @@
 #define function setApprovalForAll(address,bool) nonpayable returns ()
 #define function isApprovedForAll(address,address) nonpayable returns (bool)
 
+// @TODO: ERC165
+// @TODO: Add metadata
 /**********************************************************************
 * Errors                                                              *
 ***********************************************************************/
