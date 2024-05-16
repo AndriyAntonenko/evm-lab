@@ -1,0 +1,26 @@
+{
+  "name": "solidity-boilerplates",
+  "version": "1.0.0",
+  "description": "The set of solidity boilerplates for study and tips",
+  "main": "index.js",
+  "directories": {
+    "lib": "lib",
+    "test": "test"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AndriyAntonenko/evm-lab.git"
+  },
+  "author": "Andrii Antonenko",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/AndriyAntonenko/evm-lab/issues"
+  },
+  "homepage": "https://github.com/AndriyAntonenko/evm-lab#readme",
+  "dependencies": {
+    "@openzeppelin/merkle-tree": "^1.0.6"
+  }
+}
