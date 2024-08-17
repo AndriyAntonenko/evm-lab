@@ -5,7 +5,10 @@ libs = ["lib"]
 solc = "0.8.20"
 ffi = true
 evm_version = "shanghai"
-remappings = ["@openzeppelin/=lib/openzeppelin-contracts/"]
+remappings = [
+  "@openzeppelin/=lib/openzeppelin-contracts/",
+  "@openzeppelin/contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts",
+]
 
 [fmt]
 bracket_spacing = true
