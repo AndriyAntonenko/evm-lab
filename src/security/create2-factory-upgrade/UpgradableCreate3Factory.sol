@@ -7,6 +7,8 @@ import { OwnableUpgradeable } from "lib/openzeppelin-contracts-upgradeable/contr
 
 import { CREATE3 } from "lib/solady/src/utils/CREATE3.sol";
 
+/// @title UpgradableCreate3Factory
+/// @notice A factory contract that creates a child contract using the CREATE3 functions
 contract UpgradableCreate3Factory is Initializable, UUPSUpgradeable, OwnableUpgradeable {
   constructor() {
     _disableInitializers();

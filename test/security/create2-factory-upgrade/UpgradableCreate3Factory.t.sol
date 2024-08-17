@@ -19,17 +19,25 @@ contract UpgradableCreate3FactoryTest is Test {
     factory.initialize(i_admin);
   }
 
+  /// @notice Here the issue scenario
   function test_UpgradeAddressNotMismatchForCREATE3() public {
+    // step 1: predict the address of the child contract
     bytes32 salt = 0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef;
     address expectedAddress = factory.predictAddress(salt);
 
+    // step 2: admin upgrades the factory to a new implementation with changed child code
     NewUpgradableCreate3Factory newImpl = new NewUpgradableCreate3Factory();
     vm.prank(i_admin);
     factory.upgradeToAndCall(address(newImpl), "");
 
+    // step 3: create of the child with the expected address will work, no address mismatch
     factory.createChild(expectedAddress, salt);
   }
 }
+
+/*//////////////////////////////////////////////////////////////
+            UPGRADED FACTORY WITH CHANGED CHILD CODE
+//////////////////////////////////////////////////////////////*/
 
 contract NewUpgradableCreate3Factory is UpgradableCreate3Factory {
   constructor() { }

@@ -19,24 +19,26 @@ contract UpgradableCreate2FactoryTest is Test {
     factory.initialize(i_admin);
   }
 
-  function test_createChild_success() public {
-    bytes32 salt = 0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef;
-    address expectedAddress = factory.predictAddress(salt);
-    factory.createChild(expectedAddress, salt);
-  }
-
+  /// @notice Here the issue scenario
   function test_upgradeAddressMismatchWithChildCodeChange() public {
+    // step 1: predict the address of the child contract
     bytes32 salt = 0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef;
     address expectedAddress = factory.predictAddress(salt);
 
+    // step 2: admin upgrades the factory to a new implementation with changed child code
     NewUpgradableCreate2Factory newImpl = new NewUpgradableCreate2Factory();
     vm.prank(i_admin);
     factory.upgradeToAndCall(address(newImpl), "");
 
+    // step 3: create of the child with the expected address will revert, cause address mismatch
     vm.expectRevert();
     factory.createChild(expectedAddress, salt);
   }
 }
+
+/*//////////////////////////////////////////////////////////////
+            UPGRADED FACTORY WITH CHANGED CHILD CODE
+//////////////////////////////////////////////////////////////*/
 
 contract NewUpgradableCreate2Factory is UpgradableCreate2Factory {
   constructor() { }

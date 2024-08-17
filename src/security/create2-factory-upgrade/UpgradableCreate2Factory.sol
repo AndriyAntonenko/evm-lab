@@ -7,6 +7,8 @@ import { OwnableUpgradeable } from "lib/openzeppelin-contracts-upgradeable/contr
 
 import { Create2 } from "@openzeppelin/contracts/utils/Create2.sol";
 
+/// @title UpgradableCreate2Factory
+/// @notice A factory contract that creates a child contract using the CREATE2 opcode
 contract UpgradableCreate2Factory is Initializable, UUPSUpgradeable, OwnableUpgradeable {
   constructor() {
     _disableInitializers();
